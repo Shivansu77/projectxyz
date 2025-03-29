@@ -1,62 +1,73 @@
 <?php
-ob_start(); // Start output buffering
+require_once 'dbConnect.php';
 session_start();
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-if (!isset($_SESSION['user']) || !is_array($_SESSION['user'])) {
-    die("Unauthorized access.");
+if (!isset($_SESSION['user'])) {
+    header('Location: index.php');
+    exit;
 }
 
-$user = $_SESSION['user'];
-
-if (!isset($user['id'])) {
-    die("❌ User ID not found. Please log in again.");
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: home.php');
+    exit;
 }
 
-$userId = intval($user['id']); // Ensure integer type
-
-$conn = new mysqli("localhost", "root", "root", "projectx");
-
-if ($conn->connect_error) {
-    die("❌ Connection failed: " . $conn->connect_error);
+// Validate survey_id
+if (!isset($_POST['survey_id']) || !is_numeric($_POST['survey_id'])) {
+    header('Location: home.php?error=invalid_survey');
+    exit;
 }
 
-// Validate POST request
-if ($_SERVER["REQUEST_METHOD"] !== "POST" || empty($_POST['survey_id']) || empty($_POST['answers'])) {
-    die("❌ Invalid request.");
-}
+$surveyId = (int)$_POST['survey_id'];
+$userId = $_SESSION['user']['id'];
 
-$surveyId = intval($_POST['survey_id']);
-$answers = $_POST['answers'];
+try {
+    $pdo->beginTransaction();
 
-// Prepare statement for inserting responses
-$stmt = $conn->prepare("INSERT INTO responses (survey_id, question_id, user_id, answer, created_at) VALUES (?, ?, ?, ?, NOW())");
-
-if (!$stmt) {
-    die("❌ SQL prepare failed: " . $conn->error);
-}
-
-foreach ($answers as $questionId => $answerText) {
-    if (!is_numeric($questionId) || empty(trim($answerText))) {
-        continue; // Skip invalid or empty answers
+    // 1. Verify survey exists
+    $stmt = $pdo->prepare("SELECT id FROM surveys WHERE id = ?");
+    $stmt->execute([$surveyId]);
+    if (!$stmt->fetch()) {
+        throw new Exception("Survey not found");
     }
 
-    $questionId = intval($questionId);
-    $stmt->bind_param("iiis", $surveyId, $questionId, $userId, $answerText);
+    // 2. Insert response record
+    $stmt = $pdo->prepare("INSERT INTO responses (survey_id, user_id, created_at) VALUES (?, ?, NOW())");
+    $stmt->execute([$surveyId, $userId]);
+    $responseId = $pdo->lastInsertId();
 
-    if (!$stmt->execute()) {
-        die("❌ Execution failed: " . $stmt->error);
+    // 3. Insert answers
+    if (!empty($_POST['answers']) && is_array($_POST['answers'])) {
+        $stmt = $pdo->prepare("INSERT INTO response_answers (response_id, question_id, answer_text) VALUES (?, ?, ?)");
+        
+        $answersInserted = 0;
+        foreach ($_POST['answers'] as $questionId => $answerText) {
+            $questionId = (int)$questionId;
+            $answerText = trim($answerText);
+            
+            if ($questionId > 0 && !empty($answerText)) {
+                $stmt->execute([$responseId, $questionId, htmlspecialchars($answerText)]);
+                $answersInserted++;
+            }
+        }
+        
+        if ($answersInserted === 0) {
+            throw new Exception("No valid answers provided");
+        }
+    } else {
+        throw new Exception("No answers received");
     }
+
+    $pdo->commit();
+    
+    // Redirect with success message
+    header('Location: home.php?success=survey_submitted');
+    exit;
+
+} catch (Exception $e) {
+    $pdo->rollBack();
+    error_log("Survey submission error: " . $e->getMessage());
+    header('Location: take_survey.php?survey_id='.$surveyId.'&error=submission_failed');
+    exit;
 }
-
-$stmt->close();
-$conn->close();
-
-// Redirect after submission
-header("Location: home.php?success=1");
-exit();
-
-ob_end_flush(); // Flush output buffer
 ?>

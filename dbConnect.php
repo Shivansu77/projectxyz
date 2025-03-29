@@ -1,20 +1,19 @@
 <?php
 $host = "localhost";
-$port = 8889; // MAMP default MySQL port
-$dbname = "projectx"; // Update with your database name
+$port = 8889;
+$dbname = "projectx";
 $username = "root";
-$password = "root"; // MAMP default MySQL password
+$password = "root";
 
 try {
-    // Establishing the connection using PDO
-    $pdo = new PDO("mysql:host=$host;port=$port;dbname=$dbname;charset=utf8", $username, $password);
-
-    // Set error mode to exception for debugging
+    $pdo = new PDO("mysql:host=$host;port=$port;dbname=$dbname;charset=utf8mb4", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    echo "✅ Database connected successfully!";
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 } catch (PDOException $e) {
-    // Display error message if connection fails
-    die("❌ Database Connection Failed: " . $e->getMessage());
+    error_log("Database connection failed: " . $e->getMessage());
+    header("Content-Type: application/json");
+    http_response_code(500);
+    die(json_encode(["error" => "Database connection failed"]));
 }
 ?>

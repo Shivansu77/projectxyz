@@ -4,13 +4,13 @@ session_start();
 
 $errors = [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signup'])) {
-    try {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['signup'])) {
+        // Registration logic
         $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
         $name = trim($_POST['name']);
         $password = trim($_POST['password']);
         $confirmPassword = trim($_POST['confirm_password']);
-        $created_at = date('Y-m-d H:i:s');
 
         // Validations
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -20,45 +20,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signup'])) {
             $errors['name'] = 'Name is required';
         }
         if (strlen($password) < 8) {
-            $errors['password'] = 'Password must be at least 8 characters long.';
+            $errors['password'] = 'Password must be at least 8 characters';
         }
         if ($password !== $confirmPassword) {
             $errors['confirm_password'] = 'Passwords do not match';
         }
 
-        // Check if email already exists
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = :email");
-        $stmt->execute(['email' => $email]);
-        if ($stmt->fetch()) {
-            $errors['user_exist'] = 'Email is already registered';
+        // Check if email exists
+        if (empty($errors)) {
+            try {
+                $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+                $stmt->execute([$email]);
+                if ($stmt->fetch()) {
+                    $errors['user_exist'] = 'Email already registered';
+                }
+            } catch (PDOException $e) {
+                error_log("Database error: " . $e->getMessage());
+                $errors['general'] = 'Registration failed. Please try again.';
+            }
         }
 
-        if (!empty($errors)) {
-            $_SESSION['errors'] = $errors;
-            header('Location: register.php');
-            exit();
+        if (empty($errors)) {
+            try {
+                $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+                $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role, created_at) VALUES (?, ?, ?, 'user', NOW())");
+                $stmt->execute([$name, $email, $hashedPassword]);
+                
+                $_SESSION['success'] = 'Registration successful! Please login.';
+                header('Location: index.php');
+                exit();
+            } catch (PDOException $e) {
+                error_log("Database error: " . $e->getMessage());
+                $errors['general'] = 'Registration failed. Please try again.';
+            }
         }
 
-        // Hash password & insert user
-        $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-        $stmt = $pdo->prepare("INSERT INTO users (email, password, name, created_at) VALUES (:email, :password, :name, :created_at)");
-        $stmt->execute([
-            'email' => $email,
-            'password' => $hashedPassword,
-            'name' => $name,
-            'created_at' => $created_at
-        ]);
-
-        header('Location: index.php');
+        $_SESSION['errors'] = $errors;
+        header('Location: register.php');
         exit();
-    } catch (PDOException $e) {
-        die("Database error: " . $e->getMessage()); 
-    }
-}
 
-// LOGIN LOGIC
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signin'])) {
-    try {
+    } elseif (isset($_POST['signin'])) {
+        // Login logic
         $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
         $password = trim($_POST['password']);
 
@@ -66,38 +68,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signin'])) {
             $errors['email'] = 'Invalid email format';
         }
         if (empty($password)) {
-            $errors['password'] = 'Password cannot be empty';
+            $errors['password'] = 'Password is required';
         }
 
-        if (!empty($errors)) {
-            $_SESSION['errors'] = $errors;
-            header('Location: index.php');
-            exit();
+        if (empty($errors)) {
+            try {
+                $stmt = $pdo->prepare("SELECT id, name, email, password, role, last_login FROM users WHERE email = ?");
+                $stmt->execute([$email]);
+                $user = $stmt->fetch();
+
+                if ($user && password_verify($password, $user['password'])) {
+                    // Regenerate session ID for security
+                    session_regenerate_id(true);
+                    
+                    // Set session variables
+                    $_SESSION['user'] = [
+                        'id' => $user['id'],
+                        'name' => $user['name'],
+                        'email' => $user['email'],
+                        'role' => $user['role'],
+                        'last_login' => $user['last_login']
+                    ];
+
+                    // Update last login time
+                    $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")
+                        ->execute([$user['id']]);
+                    
+                    // Redirect based on role
+                    if ($user['role'] === 'admin') {
+                        header('Location: admin_dashboard.php');
+                    } else {
+                        header('Location: home.php');
+                    }
+                    exit();
+                } else {
+                    $errors['login'] = 'Invalid email or password';
+                }
+            } catch (PDOException $e) {
+                error_log("Database error: " . $e->getMessage());
+                $errors['login'] = 'Login failed. Please try again.';
+            }
         }
 
-        // Fetch user
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = :email");
-        $stmt->execute(['email' => $email]);
-        $user = $stmt->fetch();
-
-        // Verify password
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user'] = [
-                'id' => $user['id'],
-                'email' => $user['email'],
-                'name' => $user['name'],
-                'created_at' => $user['created_at']
-            ];
-            header('Location: home.php');
-            exit();
-        } else {
-            $errors['login'] = 'Invalid email or password';
-            $_SESSION['errors'] = $errors;
-            header('Location: index.php');
-            exit();
-        }
-    } catch (PDOException $e) {
-        die("Database error: " . $e->getMessage());
+        $_SESSION['errors'] = $errors;
+        header('Location: index.php');
+        exit();
     }
 }
+
+header('Location: index.php');
+exit();
 ?>

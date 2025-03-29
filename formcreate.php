@@ -1,3 +1,12 @@
+<?php
+session_start();
+require_once 'dbConnect.php';
+
+if (!isset($_SESSION['user'])) {
+    header('Location: index.php');
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,82 +16,166 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-6">
-    <a href="home.php" class="text-blue-500">← Back to Home</a>
-    <h1>Create a New Survey</h1>
-
     <div class="max-w-xl mx-auto bg-white p-6 rounded shadow-md">
-        <h2 class="text-xl font-bold mb-4">Create a Survey</h2>
-
+        <h1 class="text-2xl font-bold mb-4">Create Survey</h1>
         <form id="surveyForm">
-            <label class="block mb-2">Survey Title:</label>
-            <input type="text" id="title" required class="w-full p-2 border rounded mb-4">
-
-            <label class="block mb-2">Description:</label>
-            <textarea id="description" required class="w-full p-2 border rounded mb-4"></textarea>
-
-            <label class="block mb-2">Questions:</label>
-            <div id="questionsContainer" class="mb-4">
-                <input type="text" class="question-input w-full p-2 border rounded mb-2" placeholder="Enter a question">
+            <div class="mb-4">
+                <label class="block mb-2 font-semibold">Survey Title:</label>
+                <input type="text" id="title" required class="w-full p-2 border rounded">
             </div>
-            <button type="button" id="addQuestion" class="bg-blue-500 text-white p-2 rounded">+ Add Question</button>
 
-            <button type="button" id="previewBtn" class="bg-yellow-400 text-black p-2 rounded mt-4 w-full">Preview Survey</button>
-            <button type="submit" class="bg-green-500 text-white p-2 rounded mt-4 w-full">Create Survey</button>
+            <div class="mb-4">
+                <label class="block mb-2 font-semibold">Description:</label>
+                <textarea id="description" required class="w-full p-2 border rounded"></textarea>
+            </div>
+
+            <div class="mb-4">
+                <label class="block mb-2 font-semibold">Questions:</label>
+                <div id="questionsContainer" class="space-y-2">
+                    <div class="flex gap-2">
+                        <input type="text" class="question-input flex-1 p-2 border rounded" placeholder="Enter question">
+                        <button type="button" class="remove-question bg-red-500 text-white p-2 rounded">×</button>
+                    </div>
+                </div>
+                <button type="button" id="addQuestion" class="bg-blue-500 text-white p-2 rounded mt-2">
+                    + Add Question
+                </button>
+            </div>
+
+            <div class="flex space-x-4">
+                <button type="button" id="previewBtn" class="bg-yellow-400 text-black p-2 rounded flex-1">
+                    Preview Survey
+                </button>
+                <button type="submit" class="bg-green-500 text-white p-2 rounded flex-1">
+                    Create Survey
+                </button>
+            </div>
         </form>
 
-        <!-- Survey Preview Section -->
         <div id="surveyPreview" class="mt-6 p-4 border border-gray-300 rounded bg-gray-50 hidden">
-            <h3 class="text-xl font-bold">Preview Survey</h3>
-            <div id="previewTitle"></div>
-            <div id="previewDescription"></div>
-            <div id="previewQuestions"></div>
-            <button type="button" id="editBtn" class="bg-blue-500 text-white rounded p-2 mt-4">Edit Survey</button>
+            <h3 class="text-xl font-bold mb-2">Preview Survey</h3>
+            <div id="previewTitle" class="mb-2"></div>
+            <div id="previewDescription" class="mb-4"></div>
+            <div id="previewQuestions" class="mb-4"></div>
+            <button type="button" id="editBtn" class="bg-blue-500 text-white p-2 rounded w-full">
+                Edit Survey
+            </button>
         </div>
 
-        <p id="message" class="text-center mt-4 text-red-500"></p>
+        <div id="message" class="mt-4 text-center"></div>
     </div>
 
     <script>
-        document.getElementById("addQuestion").addEventListener("click", function() {
-            // Add new question input
-            const questionInput = document.createElement("input");
-            questionInput.type = "text";
-            questionInput.classList.add("question-input", "w-full", "p-2", "border", "rounded", "mb-2");
-            questionInput.placeholder = "Enter a question";
-            document.getElementById("questionsContainer").appendChild(questionInput);
-        });
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add question
+            document.getElementById('addQuestion').addEventListener('click', function() {
+                const container = document.getElementById('questionsContainer');
+                const div = document.createElement('div');
+                div.className = 'flex gap-2';
+                div.innerHTML = `
+                    <input type="text" class="question-input flex-1 p-2 border rounded" placeholder="Enter question">
+                    <button type="button" class="remove-question bg-red-500 text-white p-2 rounded">×</button>
+                `;
+                container.appendChild(div);
+            });
 
-        document.getElementById("previewBtn").addEventListener("click", function() {
-            // Get the form values
-            const title = document.getElementById("title").value;
-            const description = document.getElementById("description").value;
-            const questions = Array.from(document.querySelectorAll(".question-input"))
-                                    .map(input => input.value)
-                                    .filter(value => value.trim() !== ""); // Filter out empty questions
+            // Remove question
+            document.getElementById('questionsContainer').addEventListener('click', function(e) {
+                if (e.target.classList.contains('remove-question')) {
+                    if (document.querySelectorAll('.question-input').length > 1) {
+                        e.target.parentElement.remove();
+                    } else {
+                        alert('A survey must have at least one question');
+                    }
+                }
+            });
 
-            // Display the preview
-            document.getElementById("surveyPreview").classList.remove("hidden");
+            // Preview survey
+            document.getElementById('previewBtn').addEventListener('click', function() {
+                const title = document.getElementById('title').value.trim();
+                const description = document.getElementById('description').value.trim();
+                const questions = Array.from(document.querySelectorAll('.question-input'))
+                                     .map(input => input.value.trim())
+                                     .filter(q => q !== '');
 
-            // Populate preview content
-            document.getElementById("previewTitle").innerHTML = `<strong>Title:</strong> ${title}`;
-            document.getElementById("previewDescription").innerHTML = `<strong>Description:</strong> ${description}`;
-            document.getElementById("previewQuestions").innerHTML = `<strong>Questions:</strong><ul>${questions.map(q => `<li>${q}</li>`).join('')}</ul>`;
+                if (!title) {
+                    alert('Survey title is required');
+                    return;
+                }
 
-            // Hide the form
-            document.getElementById("surveyForm").classList.add("hidden");
-        });
+                if (questions.length === 0) {
+                    alert('Please add at least one question');
+                    return;
+                }
 
-        document.getElementById("editBtn").addEventListener("click", function() {
-            // Show the form again and hide the preview
-            document.getElementById("surveyPreview").classList.add("hidden");
-            document.getElementById("surveyForm").classList.remove("hidden");
-        });
+                document.getElementById('previewTitle').textContent = title;
+                document.getElementById('previewDescription').textContent = description || 'No description';
+                
+                const previewQuestions = document.getElementById('previewQuestions');
+                previewQuestions.innerHTML = '<h4 class="font-semibold mb-2">Questions:</h4>';
+                questions.forEach((q, i) => {
+                    previewQuestions.innerHTML += `<div class="mb-2">${i+1}. ${q}</div>`;
+                });
 
-        // Handle the form submission
-        document.getElementById("surveyForm").addEventListener("submit", function(e) {
-            e.preventDefault(); // Prevent actual submission to demonstrate the functionality
-            // You can handle form submission here (send the data to a PHP script or AJAX)
-            alert("Survey Created!");
+                document.getElementById('surveyForm').classList.add('hidden');
+                document.getElementById('surveyPreview').classList.remove('hidden');
+            });
+
+            // Edit survey
+            document.getElementById('editBtn').addEventListener('click', function() {
+                document.getElementById('surveyPreview').classList.add('hidden');
+                document.getElementById('surveyForm').classList.remove('hidden');
+            });
+
+            // Form submission
+            document.getElementById('surveyForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const title = document.getElementById('title').value.trim();
+                const description = document.getElementById('description').value.trim();
+                const questions = Array.from(document.querySelectorAll('.question-input'))
+                                     .map(input => input.value.trim())
+                                     .filter(q => q !== '');
+
+                if (!title) {
+                    alert('Survey title is required');
+                    document.getElementById('title').focus();
+                    return;
+                }
+
+                if (questions.length === 0) {
+                    alert('Please add at least one question');
+                    document.querySelector('.question-input').focus();
+                    return;
+                }
+
+                const formData = {
+                    title: title,
+                    questions: questions,
+                    user_id: <?= $_SESSION['user']['id'] ?? 0 ?>
+                };
+                
+                if (description) formData.description = description;
+
+                try {
+                    const response = await fetch('store_survey.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(formData)
+                    });
+
+                    const result = await response.json();
+                    
+                    if (!response.ok) throw new Error(result.error || "Failed to create survey");
+                    
+                    alert(`Survey created with ${questions.length} questions!`);
+                    window.location.href = `take_survey.php?survey_id=${result.survey_id}`;
+                    
+                } catch (error) {
+                    console.error("Submission error:", error);
+                    alert("Error: " + error.message);
+                }
+            });
         });
     </script>
 </body>

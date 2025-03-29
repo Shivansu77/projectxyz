@@ -1,38 +1,42 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-header('Content-Type: application/json');
+ob_start();
+header("Content-Type: application/json");
+require_once 'dbConnect.php';
 
-$host = "localhost";
-$user = "root"; // MAMP default username
-$pass = "root"; // MAMP default password
-$dbname = "projectx"; // <-- Corrected database name
-
-$conn = new mysqli($host, $user, $pass, $dbname);
-if ($conn->connect_error) {
-    die(json_encode(["error" => "Database connection failed: " . $conn->connect_error]));
+if (!isset($_GET['survey_id']) || !is_numeric($_GET['survey_id'])) {
+    http_response_code(400);
+    die(json_encode(["error" => "Valid survey ID required"]));
 }
 
-$survey_id = isset($_GET['survey_id']) ? intval($_GET['survey_id']) : 0;
-if (!$survey_id) {
-    die(json_encode(["error" => "Survey ID missing"]));
-}
+$surveyId = (int)$_GET['survey_id'];
 
-$sql = "SELECT * FROM surveys WHERE id = $survey_id";
-$result = $conn->query($sql);
+try {
+    // Get survey
+    $stmt = $pdo->prepare("SELECT id, title, description FROM surveys WHERE id = ?");
+    $stmt->execute([$surveyId]);
+    $survey = $stmt->fetch();
 
-if ($result->num_rows > 0) {
-    $survey = $result->fetch_assoc();
-    $questions = [];
-
-    $qsql = "SELECT * FROM questions WHERE survey_id = $survey_id";
-    $qresult = $conn->query($qsql);
-    while ($row = $qresult->fetch_assoc()) {
-        $questions[] = $row;
+    if (!$survey) {
+        http_response_code(404);
+        die(json_encode(["error" => "Survey not found"]));
     }
 
-    echo json_encode(["title" => $survey['title'], "questions" => $questions]);
-} else {
-    echo json_encode(["error" => "Survey not found"]);
+    // Get questions
+    $stmt = $pdo->prepare("SELECT id, question_text FROM questions WHERE survey_id = ?");
+    $stmt->execute([$surveyId]);
+    $questions = $stmt->fetchAll();
+
+    echo json_encode([
+        "survey" => $survey,
+        "questions" => $questions
+    ]);
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode([
+        "error" => "Database error",
+        "message" => $e->getMessage()
+    ]);
 }
+
+ob_end_flush();
 ?>
